@@ -27,6 +27,7 @@
 #include <list>
 #include <set>
 #include <signal.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <unordered_map>
 #include <unordered_set>
@@ -151,9 +152,13 @@ inline bool KillProcessByPID(pid_t pid) {
     return false;
   }
 
+  NSLog(@"KillProcessByPID: sending SIGTERM to %d", pid);
   kill(pid, SIGTERM);
 
   for (int i = 0; i < 15; i++) {
+    // Reap before probing: for our own children kill(pid, 0) keeps
+    // succeeding on the zombie until someone calls waitpid.
+    waitpid(pid, NULL, WNOHANG);
     if (kill(pid, 0) != 0 && errno == ESRCH) {
       std::printf("Process killed: %d\n", pid);
       return true;
@@ -164,6 +169,7 @@ inline bool KillProcessByPID(pid_t pid) {
   kill(pid, SIGKILL);
 
   for (int i = 0; i < 10; i++) {
+    waitpid(pid, NULL, WNOHANG);
     if (kill(pid, 0) != 0 && errno == ESRCH) {
 
       return true;
@@ -176,8 +182,8 @@ inline bool KillProcessByPID(pid_t pid) {
 
 struct Display {
 public:
-  pid_t daemon;
-  CGDirectDisplayID screen;
+  pid_t daemon = 0;
+  CGDirectDisplayID screen = kCGNullDirectDisplay;
   std::string uuid;
   std::string videoPath;
   std::string framePath;
@@ -209,12 +215,13 @@ static void ScanDisplays() {
     runtime[uuid] = did;
   }
 
-  for (auto it = displays.begin(); it != displays.end();) {
-    if (runtime.find(it->uuid) == runtime.end()) {
-      KillProcessByPID(it->daemon);
-      it = displays.erase(it);
-    } else {
-      ++it;
+  // Keep entries for displays that disappeared: the daemon must die, but the
+  // uuid→videoPath assignment has to survive so the wallpaper can be
+  // relaunched when the display comes back (issue #60).
+  for (auto &d : displays) {
+    if (runtime.find(d.uuid) == runtime.end()) {
+      KillProcessByPID(d.daemon);
+      d.daemon = 0;
     }
   }
 
@@ -243,10 +250,15 @@ static void ScanDisplays() {
 
 static void SetWallpaperDisplay(pid_t daemon_PID, CGDirectDisplayID displayID,
                                 std::string videoPath, std::string framePath) {
+  // Match by UUID, not by screen id: stale entries can transiently resolve
+  // to the same screen id, and a screen match would record the new pid on
+  // the wrong entry — which ScanDisplays then kills as stale.
+  std::string uuid = DisplayUUIDFromID(displayID);
 
   for (Display &display : displays) {
-      
-    if (display.screen == displayID) {
+
+    if ((!uuid.empty() && display.uuid == uuid) ||
+        (uuid.empty() && display.screen == displayID)) {
 
       if (display.daemon) {
         KillProcessByPID(display.daemon);
@@ -254,6 +266,7 @@ static void SetWallpaperDisplay(pid_t daemon_PID, CGDirectDisplayID displayID,
       }
 
       display.daemon = daemon_PID;
+      display.screen = displayID;
       display.videoPath = videoPath;
       display.framePath = framePath;
       return;
@@ -261,6 +274,7 @@ static void SetWallpaperDisplay(pid_t daemon_PID, CGDirectDisplayID displayID,
   }
 
   Display newDisplay;
+  newDisplay.uuid = uuid;
   newDisplay.screen = displayID;
   newDisplay.videoPath = videoPath;
   newDisplay.framePath = framePath;

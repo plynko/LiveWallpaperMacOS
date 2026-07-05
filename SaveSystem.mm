@@ -96,6 +96,9 @@ std::list<Display> SaveSystem::Load() {
     Display d;
     d = node.as<Display>();
     d.screen = DisplayIDFromUUID(d.uuid);
+    // PIDs are meaningless across sessions: keeping them would make the
+    // engine SIGTERM whatever unrelated process now owns the recycled PID.
+    d.daemon = 0;
     result.push_back(d);
   }
 

@@ -40,6 +40,8 @@ static NSString *folderPath = nil;
   dispatch_queue_t _wallpaperQueue;
   dispatch_queue_t _thumbnailQueue;
   dispatch_semaphore_t _wallpaperSemaphore;
+  NSTimer *_daemonWatchdog;
+  NSMutableDictionary<NSNumber *, dispatch_source_t> *_daemonMonitors;
 }
 
 + (instancetype)sharedEngine {
@@ -74,6 +76,38 @@ static NSString *folderPath = nil;
     usleep(2);
 
     displays = SaveSystem::Load();
+
+    // Screens-changed/wake notifications alone are not enough to notice a
+    // dead daemon: the display can come back without any event (issue #60),
+    // so poll as a safety net. The check is just a kill(pid, 0) per display.
+    // Daemon deaths are caught event-driven (PROC dispatch sources in
+    // launchDaemonOnScreen); this timer is only a rare safety net for the
+    // cases with no event at all, e.g. a display coming back without a
+    // screens-changed notification. Wide tolerance so it coexists with
+    // App Nap instead of opting the whole app out of it.
+    _daemonMonitors = [NSMutableDictionary dictionary];
+    // Register on the main run loop from the main thread: the engine is a
+    // lazy singleton and the first access can come from any thread.
+    _daemonWatchdog =
+        [NSTimer timerWithTimeInterval:300.0
+                                target:self
+                              selector:@selector(ensureDaemonsAlive)
+                              userInfo:nil
+                               repeats:YES];
+    _daemonWatchdog.tolerance = 60.0;
+    NSTimer *watchdog = _daemonWatchdog;
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [[NSRunLoop mainRunLoop] addTimer:watchdog
+                                forMode:NSRunLoopCommonModes];
+    });
+
+    // One-shot startup check: the regular launch path skips displays that
+    // have no usable saved entry, and the first timer tick is minutes away.
+    __weak __typeof__(self) weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+                     [weakSelf ensureDaemonsAlive];
+                   });
 
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
       
@@ -205,23 +239,64 @@ static NSString *folderPath = nil;
     NSLog(@"Screen Aweaked!");
     [self randomWallpapersLid];
   }
+
+  // Displays can take a moment to settle after wake; then make sure every
+  // assigned display has a live daemon again (issue #60).
+  dispatch_after(
+      dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)),
+      dispatch_get_main_queue(), ^{
+        [self ensureDaemonsAlive];
+      });
 }
 
 - (void)screensDidChange:(NSNotification *)note {
 
   NSLog(@"Screens changed");
-    ScanDisplays();
-    for (Display display : displays) {
+  [self ensureDaemonsAlive];
+}
 
-      if (!display.videoPath.empty()) {
-        CGDirectDisplayID displayID = DisplayIDFromUUID(display.uuid);
+// Walk the *connected* displays and give each one a live daemon: a display
+// with a saved assignment gets its own video back, a display never seen
+// before falls back to the last applied wallpaper. Healthy daemons are left
+// alone — screens-changed events arrive in bursts, and restarting a healthy
+// daemon makes the wallpaper flicker.
+- (void)ensureDaemonsAlive {
+  ScanDisplays();
 
-        [self startWallpaperWithPath:_currentVideoPath
-                          onDisplays:@[ @(displayID) ]];
+  NSString *lastVideo = [[NSUserDefaults standardUserDefaults]
+      stringForKey:@"LastWallpaperPath"];
+
+  for (NSScreen *screen in NSScreen.screens) {
+    CGDirectDisplayID did = GetDisplayID(screen);
+    std::string uuid = DisplayUUIDFromID(did);
+
+    const Display *entry = nullptr;
+    for (const Display &d : displays) {
+      if (!d.uuid.empty() && d.uuid == uuid) {
+        entry = &d;
+        break;
       }
     }
-    
-    
+
+    NSString *videoPath = nil;
+    if (entry && !entry->videoPath.empty()) {
+      if (entry->daemon > 1) {
+        // Reap first: a zombie child would pass the kill(pid, 0) test.
+        waitpid(entry->daemon, NULL, WNOHANG);
+        if (kill(entry->daemon, 0) == 0)
+          continue;
+      }
+      videoPath = [NSString stringWithUTF8String:entry->videoPath.c_str()];
+    } else if (lastVideo.length > 0) {
+      videoPath = lastVideo;
+    } else {
+      continue;
+    }
+
+    NSLog(@"Relaunching daemon for display %s with video %@", uuid.c_str(),
+          videoPath);
+    [self startWallpaperWithPath:videoPath onDisplays:@[ @(did) ]];
+  }
 }
 
 - (NSString *)thumbnailCachePath {
@@ -989,6 +1064,42 @@ static NSString *folderPath = nil;
   [self startWallpaperWithPath:videoPath onDisplays:@[ @(displayID) ]];
 }
 
+// Kernel notification on daemon death: recovery reacts in seconds without
+// any polling. The 2s delay lets an intentional kill (wallpaper replacement)
+// finish spawning its successor first — ensureDaemonsAlive is idempotent and
+// will find the new daemon alive.
+- (void)monitorDaemonExit:(pid_t)pid {
+  dispatch_source_t src =
+      dispatch_source_create(DISPATCH_SOURCE_TYPE_PROC, pid,
+                             DISPATCH_PROC_EXIT, dispatch_get_main_queue());
+  if (!src)
+    return;
+
+  __weak __typeof__(self) weakSelf = self;
+  dispatch_source_set_event_handler(src, ^{
+    __typeof__(self) strongSelf = weakSelf;
+    if (!strongSelf)
+      return;
+    NSLog(@"Daemon %d exited — scheduling recovery check", pid);
+    dispatch_source_cancel(src);
+    [strongSelf->_daemonMonitors removeObjectForKey:@(pid)];
+    // Reap: spawned daemons are our children and would linger as zombies,
+    // where kill(pid, 0) still succeeds and defeats every aliveness check.
+    waitpid(pid, NULL, WNOHANG);
+    // Keep the pid list to live children only: terminateApplication kills
+    // everything still listed, and a recycled pid would hit an innocent
+    // process.
+    strongSelf->_daemonPIDs.remove(pid);
+    dispatch_after(
+        dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)),
+        dispatch_get_main_queue(), ^{
+          [strongSelf ensureDaemonsAlive];
+        });
+  });
+  dispatch_resume(src);
+  _daemonMonitors[@(pid)] = src;
+}
+
 - (void)launchDaemonOnScreen:(NSString *)videoPath
                    imagePath:(NSString *)imagePath
                    displayID:(CGDirectDisplayID)displayID {
@@ -1013,10 +1124,11 @@ static NSString *folderPath = nil;
   NSLog(@"Scaling mode: %@", scaleMode);
 
   if (!displayID) {
-    NSLog(@"Display ID not valid %u", displayID);
-    displayID = [[[NSScreen mainScreen] deviceDescription][@"NSScreenNumber"]
-        unsignedIntValue];
-    NSLog(@"Display ID changed to %u", displayID);
+    // A null id means a display that is not connected right now (stale entry
+    // from a previous session). Launching on the main display instead would
+    // stack a second daemon there and corrupt the display list.
+    NSLog(@"launchDaemonOnScreen: invalid display ID, skipping launch");
+    return;
   }
   
 
@@ -1039,6 +1151,7 @@ static NSString *folderPath = nil;
   } else {
     _daemonPIDs.push_back(pid);
     NSLog(@"Launched daemon with PID: %d", pid);
+    [self monitorDaemonExit:pid];
   }
   SetWallpaperDisplay(pid, displayID, std::string([videoPath UTF8String]),
                       std::string([imagePath UTF8String]));

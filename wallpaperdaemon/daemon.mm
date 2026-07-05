@@ -201,7 +201,8 @@ static void DisplayReconfigCallback(CGDirectDisplayID display,
   _targetScreen = newScreen;
 
   for (NSWindow *window in _windows) {
-    [window setReleasedWhenClosed:YES];
+    // No releasedWhenClosed here: the windows are also retained by _windows,
+    // and the extra release on close would over-release them under ARC.
     [window close];
   }
   [_windows removeAllObjects];
@@ -438,7 +439,8 @@ static void DisplayReconfigCallback(CGDirectDisplayID display,
   CGDisplayRemoveReconfigurationCallback(DisplayReconfigCallback, (__bridge void *)self);
 
   for (NSWindow *window in _windows) {
-    [window setReleasedWhenClosed:YES];
+    // No releasedWhenClosed here: the windows are also retained by _windows,
+    // and the extra release on close would over-release them under ARC.
     [window close];
   }
   [_windows removeAllObjects];
@@ -463,7 +465,8 @@ static void terminateWallpaperDaemonCallback(CFNotificationCenterRef center,
   NSLog(@"Received terminate notification");
   CGDisplayRemoveReconfigurationCallback(DisplayReconfigCallback, (__bridge void *)self);
   for (NSWindow *window in _windows) {
-    [window setReleasedWhenClosed:YES];
+    // No releasedWhenClosed here: the windows are also retained by _windows,
+    // and the extra release on close would over-release them under ARC.
     [window close];
   }
   [_windows removeAllObjects];
