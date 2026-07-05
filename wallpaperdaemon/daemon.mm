@@ -63,6 +63,7 @@
                  targetScreen:(NSScreen *)targetScreen
                   targetUUID:(NSString *)uuid;
 - (void)checkAndUpdatePlaybackState;
+- (void)reconcilePlaybackState;
 - (void)handleDisplayReconfiguration;
 NSScreen *ScreenForDisplayID(CGDirectDisplayID displayID);
 @end
@@ -139,6 +140,17 @@ static void DisplayReconfigCallback(CGDirectDisplayID display,
         addObserver:self
            selector:@selector(activeSpaceChanged:)
                name:NSWorkspaceActiveSpaceDidChangeNotification
+             object:nil];
+
+    [[[NSWorkspace sharedWorkspace] notificationCenter]
+        addObserver:self
+           selector:@selector(systemWillSleep:)
+               name:NSWorkspaceWillSleepNotification
+             object:nil];
+    [[[NSWorkspace sharedWorkspace] notificationCenter]
+        addObserver:self
+           selector:@selector(systemDidWake:)
+               name:NSWorkspaceDidWakeNotification
              object:nil];
 
     [[NSNotificationCenter defaultCenter]
@@ -357,12 +369,54 @@ static void DisplayReconfigCallback(CGDirectDisplayID display,
 }
 
 - (void)screenLocked:(NSNotification *)note {
-  self.wasPlayingBeforeSleep = (_players.firstObject.rate > 0);
-  NSLog(@"[Daemon] Screen locked - saving playback state: %@",
+  // Lock and sleep can arrive as a cascade in either order; only the first
+  // event captures the user-visible state, later ones would read our own pause.
+  if (!self.playbackPaused) {
+    self.wasPlayingBeforeSleep = (_players.firstObject.rate > 0);
+  }
+  NSLog(@"[Daemon] Screen locked - saved playback state: %@",
         self.wasPlayingBeforeSleep ? @"playing" : @"paused");
   self.screen_locked = true;
-  for (AVQueuePlayer *player in _players) {
-    [player pause];
+  [self pauseAllPlayers];
+}
+
+- (void)systemWillSleep:(NSNotification *)note {
+  if (!self.playbackPaused) {
+    self.wasPlayingBeforeSleep = (_players.firstObject.rate > 0);
+  }
+  NSLog(@"[Daemon] System will sleep - saved playback state: %@",
+        self.wasPlayingBeforeSleep ? @"playing" : @"paused");
+  [self pauseAllPlayers];
+}
+
+- (void)systemDidWake:(NSNotification *)note {
+  NSLog(@"[Daemon] System did wake");
+  [self reconcilePlaybackState];
+  if (self.wasPlayingBeforeSleep && !self.screen_locked &&
+      ![self isScreenLocked]) {
+    NSLog(@"[Daemon] Resuming playback after wake");
+    [self resumeAllPlayers];
+  }
+  dispatch_after(
+      dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
+      dispatch_get_main_queue(), ^{
+        [self checkAndUpdatePlaybackState];
+      });
+}
+
+// The system can pause the players behind our back (e.g. during sleep),
+// leaving playbackPaused stale; resumeAllPlayers/pauseAllPlayers early-return
+// on a stale flag, so sync it with the real player state before deciding.
+- (void)reconcilePlaybackState {
+  AVQueuePlayer *player = _players.firstObject;
+  if (!player)
+    return;
+  BOOL actuallyPaused = (player.rate == 0);
+  if (actuallyPaused != self.playbackPaused) {
+    NSLog(@"[Daemon] Reconciling playback state: internal=%@ actual=%@",
+          self.playbackPaused ? @"paused" : @"playing",
+          actuallyPaused ? @"paused" : @"playing");
+    self.playbackPaused = actuallyPaused;
   }
 }
 
@@ -420,6 +474,8 @@ static void terminateWallpaperDaemonCallback(CFNotificationCenterRef center,
 }
 
 - (void)checkAndUpdatePlaybackState {
+  [self reconcilePlaybackState];
+
   BOOL screenLocked = self.screen_locked || [self isScreenLocked];
   self.screen_locked = screenLocked;
 
@@ -964,12 +1020,28 @@ NSScreen *ScreenForDisplayID(CGDirectDisplayID displayID) {
 }
 
 float volume;
+static void LogDaemonExit(void) {
+  NSLog(@"[Daemon] exit() called — process terminating");
+}
+
 int main(int argc, const char *argv[]) {
 
   @autoreleasepool {
     [NSApplication sharedApplication];
     [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
     [NSApp finishLaunching];
+
+    // Diagnostics: every way out of this process must leave a trace in the
+    // unified log, otherwise a dead wallpaper is undebuggable (issues #60/#76).
+    atexit(LogDaemonExit);
+    signal(SIGTERM, SIG_IGN);
+    dispatch_source_t sigTermSource = dispatch_source_create(
+        DISPATCH_SOURCE_TYPE_SIGNAL, SIGTERM, 0, dispatch_get_main_queue());
+    dispatch_source_set_event_handler(sigTermSource, ^{
+      NSLog(@"[Daemon] Received SIGTERM, exiting");
+      exit(0);
+    });
+    dispatch_resume(sigTermSource);
 
     if (argc < 4) {
       NSLog(@"Usage: %s <video.mp4> <frame_output.png> <volume> <scale_mode> "
@@ -1038,6 +1110,7 @@ int main(int argc, const char *argv[]) {
         CFNotificationSuspensionBehaviorDeliverImmediately);
 
     [[NSRunLoop mainRunLoop] run];
+    NSLog(@"[Daemon] Main run loop returned — no sources/timers left");
   }
 
   return 0;
