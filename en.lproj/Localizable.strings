@@ -57,3 +57,30 @@
 "language_changed_title" = "Language Changed";
 "language_changed_message" = "Please restart the app for the language change to take effect.";
 "ok" = "OK";
+"App version" = "App version";
+
+// MARK: - Add wallpapers
+"add_wallpapers_title" = "Add wallpapers";
+"add_wallpapers_intro" = "Download live wallpapers (.mp4 or .mov) from one of these sites:";
+"add_wallpapers_save_hint" = "Save the files into your wallpaper folder, then press the reload button:";
+"add_wallpapers_name_hint" = "File names must contain a single dot — the one before the extension. E.g. ocean-4k.mp4, not ocean.4k.mp4.";
+"add_wallpapers_open_folder" = "Open in Finder";
+"help_add_wallpapers" = "Suggests sites to download live wallpapers from, and where to save them";
+
+// MARK: - Tooltips
+"help_reload" = "Rescan the wallpaper folder and rebuild the thumbnail grid";
+"help_settings" = "Open settings";
+"help_wallpaper_folder" = "Folder scanned for .mp4/.mov files. Type a path or pick one with the buttons; the grid shows every video found here.";
+"help_scaling_mode" = "How the video fits the screen: Fill crops to cover it, Fit adds bars, Stretch distorts, Center keeps the original size, Height fill matches the screen height.";
+"help_app_language" = "Interface language. Takes effect after restarting the app.";
+"help_random_on_startup" = "Apply a random wallpaper from the folder every time the app starts.";
+"help_random_on_lid" = "Apply a random wallpaper when the Mac wakes from sleep. Requires an app restart to take effect.";
+"help_pause_when_active" = "Pause playback while another app is in the foreground, to save energy. Playback resumes on the desktop.";
+"help_vignette_bar" = "Draw a dark gradient behind the menu bar to keep it readable. Reapply the wallpaper after changing this.";
+"help_rotation" = "Automatically cycle through the wallpapers in the folder at the interval below.";
+"help_rotation_delay" = "Time between automatic wallpaper changes.";
+"help_rotation_type" = "Sequential follows the folder order; Random picks a different wallpaper each time.";
+"help_volume" = "Audio volume of the wallpaper video. Set to zero to mute.";
+"help_optimize" = "Re-encode videos into more efficient codecs. Currently disabled.";
+"help_clear_cache" = "Delete generated thumbnails and static frames. They are rebuilt automatically when needed.";
+"help_reset_user_data" = "Erase all settings and saved display assignments, returning the app to its first-launch state.";

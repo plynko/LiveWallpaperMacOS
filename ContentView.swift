@@ -138,6 +138,33 @@ enum L {
         "Vignette bar (Reapply the wallpaper after change)", comment: "")
 
     static let rotationDelay = NSLocalizedString("Wallpaper rotation delay", comment: "")
+    static let appVersion = NSLocalizedString("App version", comment: "")
+
+    // Add wallpapers
+    static let addWallpapersTitle = NSLocalizedString("add_wallpapers_title", comment: "")
+    static let addWallpapersIntro = NSLocalizedString("add_wallpapers_intro", comment: "")
+    static let addWallpapersSaveHint = NSLocalizedString("add_wallpapers_save_hint", comment: "")
+    static let addWallpapersNameHint = NSLocalizedString("add_wallpapers_name_hint", comment: "")
+    static let addWallpapersOpenFolder = NSLocalizedString("add_wallpapers_open_folder", comment: "")
+    static let addWallpapersTooltip = NSLocalizedString("help_add_wallpapers", comment: "")
+
+    // Tooltips
+    static let reloadTooltip = NSLocalizedString("help_reload", comment: "")
+    static let settingsTooltip = NSLocalizedString("help_settings", comment: "")
+    static let helpWallpaperFolder = NSLocalizedString("help_wallpaper_folder", comment: "")
+    static let helpScalingMode = NSLocalizedString("help_scaling_mode", comment: "")
+    static let helpAppLanguage = NSLocalizedString("help_app_language", comment: "")
+    static let helpRandomOnStartup = NSLocalizedString("help_random_on_startup", comment: "")
+    static let helpRandomOnLid = NSLocalizedString("help_random_on_lid", comment: "")
+    static let helpPauseWhenActive = NSLocalizedString("help_pause_when_active", comment: "")
+    static let helpVignetteBar = NSLocalizedString("help_vignette_bar", comment: "")
+    static let helpRotation = NSLocalizedString("help_rotation", comment: "")
+    static let helpRotationDelay = NSLocalizedString("help_rotation_delay", comment: "")
+    static let helpRotationType = NSLocalizedString("help_rotation_type", comment: "")
+    static let helpVolume = NSLocalizedString("help_volume", comment: "")
+    static let helpOptimize = NSLocalizedString("help_optimize", comment: "")
+    static let helpClearCache = NSLocalizedString("help_clear_cache", comment: "")
+    static let helpResetUserData = NSLocalizedString("help_reset_user_data", comment: "")
 }
 
 // MARK: - UserDefaults Keys
@@ -161,6 +188,7 @@ enum UserDefaultsKeys {
 struct ContentView: View {
     @StateObject private var viewModel = WallpaperViewModel()
     @State private var showSettings = false
+    @State private var showAddWallpaper = false
     @StateObject private var displayManager = DisplayManager()
 
     @Environment(\.dismiss) private var dismiss
@@ -172,7 +200,9 @@ struct ContentView: View {
 
             VStack(spacing: 0) {
                 Spacer(minLength: 20)
-                ToolbarView(showSettings: $showSettings, onReload: { viewModel.reloadContent() })
+                ToolbarView(
+                    showSettings: $showSettings, showAddWallpaper: $showAddWallpaper,
+                    onReload: { viewModel.reloadContent() })
                     .padding(.horizontal).padding(.top, 24).padding(.bottom, 12)
 
                 ZStack(alignment: .bottom) {
@@ -223,13 +253,30 @@ struct ContentView: View {
                     .animation(.easeInOut, value: showSettings)
             }
 
+            if showAddWallpaper {
+
+                Color.black.opacity(0.3)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        showAddWallpaper = false
+                    }
+
+                AddWallpaperView(viewModel: viewModel, isPresented: $showAddWallpaper)
+                    .shadow(radius: 3)
+                    .cornerRadius(15)
+                    .onTapGesture {}
+                    .animation(.easeInOut, value: showAddWallpaper)
+            }
+
         }.animation(.easeInOut, value: showSettings)
+            .animation(.easeInOut, value: showAddWallpaper)
     }
 }
 
 // MARK: - Toolbar View
 struct ToolbarView: View {
     @Binding var showSettings: Bool
+    @Binding var showAddWallpaper: Bool
     let onReload: () -> Void
 
     var body: some View {
@@ -237,6 +284,20 @@ struct ToolbarView: View {
             Spacer()
 
             if #available(macOS 26.0, *) {
+                Button(action: { showAddWallpaper = true }) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 16))
+                }
+                .buttonStyle(.glass)
+            } else {
+                Button(action: { showAddWallpaper = true }) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 16))
+                }
+            }
+            InfoButton(text: L.addWallpapersTooltip, iconSize: 10)
+
+            if #available(macOS 26.0, *) {
                 Button(action: onReload) {
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: 16))
@@ -248,6 +309,7 @@ struct ToolbarView: View {
                         .font(.system(size: 16))
                 }
             }
+            InfoButton(text: L.reloadTooltip, iconSize: 10)
 
             if #available(macOS 26.0, *) {
                 Button(action: { showSettings = true }) {
@@ -261,7 +323,87 @@ struct ToolbarView: View {
                         .font(.system(size: 16))
                 }
             }
+            InfoButton(text: L.settingsTooltip, iconSize: 10)
         }
+    }
+}
+
+// MARK: - Add Wallpaper View
+struct AddWallpaperView: View {
+    @ObservedObject var viewModel: WallpaperViewModel
+    @Binding var isPresented: Bool
+
+    private static let sites: [(name: String, url: String)] = [
+        ("wallsflow.com", "https://wallsflow.com/"),
+        ("desktophut.com", "https://www.desktophut.com/"),
+        ("mylivewallpapers.com", "https://mylivewallpapers.com/"),
+        ("wallpaperwaves.com", "https://wallpaperwaves.com/"),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text(L.addWallpapersTitle)
+                    .font(.title2)
+                    .fontWeight(.bold)
+                Spacer()
+                Button {
+                    isPresented = false
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 18))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+
+            Text(L.addWallpapersIntro)
+
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(Self.sites, id: \.url) { site in
+                    Button {
+                        if let url = URL(string: site.url) {
+                            NSWorkspace.shared.open(url)
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "globe")
+                            Text(site.name)
+                                .underline()
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(.accentColor)
+                    .onHover { inside in
+                        inside ? NSCursor.pointingHand.push() : NSCursor.pop()
+                    }
+                }
+            }
+            .padding(.leading, 4)
+
+            Divider()
+
+            Text(L.addWallpapersSaveHint)
+
+            HStack(spacing: 8) {
+                Text(viewModel.folderPath)
+                    .font(.callout.monospaced())
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .foregroundColor(.secondary)
+                Button(L.addWallpapersOpenFolder) {
+                    NSWorkspace.shared.open(URL(fileURLWithPath: viewModel.folderPath))
+                }
+            }
+
+            Text(L.addWallpapersNameHint)
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+        .padding(20)
+        .frame(width: 460)
+        .background(.ultraThinMaterial)
+        .compatibleGlass(cornerRadius: 1)
     }
 }
 
@@ -511,7 +653,7 @@ struct SettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     // Folder Selection
-                    SettingRow(title: L.wallpaperFolder) {
+                    SettingRow(title: L.wallpaperFolder, help: L.helpWallpaperFolder) {
                         HStack {
                             TextField(L.selectFolderOrType, text: $viewModel.folderPath)
                                 .textFieldStyle(.roundedBorder)
@@ -531,7 +673,7 @@ struct SettingsView: View {
                     Divider()
 
                     // Scale Mode
-                    SettingRow(title: L.videoScalingMode) {
+                    SettingRow(title: L.videoScalingMode, help: L.helpScalingMode) {
 
                         Picker("", selection: $scaleMode) {
                             Text(L.scaleFill).tag(0)
@@ -550,7 +692,7 @@ struct SettingsView: View {
                     Divider()
 
                     // Language Selection
-                    SettingRow(title: NSLocalizedString("App language", comment: "")) {
+                    SettingRow(title: NSLocalizedString("App language", comment: ""), help: L.helpAppLanguage) {
                         Picker(
                             "",
                             selection: Binding(
@@ -579,7 +721,7 @@ struct SettingsView: View {
                     Divider()
 
                     // Random Wallpaper on Startup
-                    SettingRow(title: L.randomOnStartup) {
+                    SettingRow(title: L.randomOnStartup, help: L.helpRandomOnStartup) {
                         Toggle(
                             "",
                             isOn: Binding(
@@ -597,7 +739,7 @@ struct SettingsView: View {
                     }
 
                     // Random Wallpaper on Wakeup
-                    SettingRow(title: L.randomOnLid) {
+                    SettingRow(title: L.randomOnLid, help: L.helpRandomOnLid) {
                         Toggle(
                             "",
                             isOn: Binding(
@@ -614,7 +756,7 @@ struct SettingsView: View {
                     }
 
                     // Auto-Pause When App is Active
-                    SettingRow(title: L.pauseWhenActive) {
+                    SettingRow(title: L.pauseWhenActive, help: L.helpPauseWhenActive) {
                         Toggle(
                             "",
                             isOn: Binding(
@@ -632,7 +774,7 @@ struct SettingsView: View {
                     }
 
                     //Vinttage Bar
-                    SettingRow(title: L.vinttageBar) {
+                    SettingRow(title: L.vinttageBar, help: L.helpVignetteBar) {
                         Toggle(
                             "",
                             isOn: Binding(
@@ -650,7 +792,7 @@ struct SettingsView: View {
 
                     Divider()
 
-                    SettingRow(title: L.wallpaperRotation) {
+                    SettingRow(title: L.wallpaperRotation, help: L.helpRotation) {
                         Toggle(
                             "",
                             isOn: Binding(
@@ -676,7 +818,7 @@ struct SettingsView: View {
 
                     }
 
-                    SettingRow(title: L.rotationDelay) {
+                    SettingRow(title: L.rotationDelay, help: L.helpRotationDelay) {
                         HStack(spacing: 8) {
                             // 1. The Typeable Field
                             TextField("", value: $localMinutes, format: .number)
@@ -715,7 +857,7 @@ struct SettingsView: View {
                     }
 
                     if let engine = sharedEngine {
-                        SettingRow(title: L.rotationType) {
+                        SettingRow(title: L.rotationType, help: L.helpRotationType) {
                             Picker(
                                 "",
                                 selection: Binding(
@@ -746,7 +888,7 @@ struct SettingsView: View {
                     Divider()
 
                     // Video Volume
-                    SettingRow(title: L.videoVolume) {
+                    SettingRow(title: L.videoVolume, help: L.helpVolume) {
                         HStack {
                             Slider(value: $viewModel.volume, in: 0...100, step: 1)
                                 .frame(width: 200)
@@ -762,7 +904,7 @@ struct SettingsView: View {
                     Divider()
 
                     // Optimize Videos
-                    SettingRow(title: L.optimizeCodecs) {
+                    SettingRow(title: L.optimizeCodecs, help: L.helpOptimize) {
                         Button(L.optimize) {
                             viewModel.optimizeVideos()
                         }
@@ -770,17 +912,26 @@ struct SettingsView: View {
                     }
 
                     // Clear Cache
-                    SettingRow(title: L.clearCache) {
+                    SettingRow(title: L.clearCache, help: L.helpClearCache) {
                         Button(L.clearCacheButton) {
                             viewModel.clearCache()
                         }
                     }
 
                     // Reset User Data
-                    SettingRow(title: L.resetUserData) {
+                    SettingRow(title: L.resetUserData, help: L.helpResetUserData) {
                         Button(L.reset) {
                             viewModel.resetUserData()
                         }
+                    }
+
+                    Divider()
+
+                    // App Version
+                    SettingRow(title: L.appVersion) {
+                        Text(Self.bundleVersionString)
+                            .foregroundColor(.secondary)
+                            .textSelection(.enabled)
                     }
                 }
                 .padding()
@@ -792,6 +943,14 @@ struct SettingsView: View {
         .compatibleGlass(cornerRadius: 1)
 
     }
+    static var bundleVersionString: String {
+        let version =
+            Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+            ?? "?"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+        return "\(version) (\(build))"
+    }
+
     func formatTime(_ totalMinutes: Int) -> String {
         let h = totalMinutes / 60
         let m = totalMinutes % 60
@@ -824,14 +983,45 @@ struct SettingsView: View {
 }
 
 // MARK: - Setting Row
+struct InfoButton: View {
+    let text: String
+    var iconSize: CGFloat = 11
+    @State private var showHelp = false
+
+    var body: some View {
+        Button {
+            showHelp.toggle()
+        } label: {
+            Image(systemName: "info.circle")
+                .font(.system(size: iconSize))
+                .foregroundColor(.secondary)
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: $showHelp, arrowEdge: .bottom) {
+            Text(text)
+                .font(.callout)
+                .padding(12)
+                .frame(width: 280, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
 struct SettingRow<Content: View>: View {
     let title: String
+    var help: String? = nil
     @ViewBuilder let content: Content
 
     var body: some View {
         HStack {
-            Text(title)
-                .frame(width: 200, alignment: .leading)
+            HStack(spacing: 4) {
+                Text(title)
+                if let help {
+                    InfoButton(text: help)
+                }
+                Spacer(minLength: 0)
+            }
+            .frame(width: 200, alignment: .leading)
             content
             Spacer()
         }

@@ -58,6 +58,33 @@
 "language_changed_title" = "语言已更改";
 "language_changed_message" = "请重启应用以使语言更改生效。";
 "ok" = "确定";
+"App version" = "应用版本";
+
+// MARK: - Add wallpapers
+"add_wallpapers_title" = "添加壁纸";
+"add_wallpapers_intro" = "从以下网站下载动态壁纸（.mp4 或 .mov）：";
+"add_wallpapers_save_hint" = "将文件保存到壁纸文件夹，然后点击刷新按钮：";
+"add_wallpapers_name_hint" = "文件名只能包含一个点（扩展名前的那个）。例如 ocean-4k.mp4，而不是 ocean.4k.mp4。";
+"add_wallpapers_open_folder" = "在访达中打开";
+"help_add_wallpapers" = "推荐下载动态壁纸的网站，并说明保存位置";
+
+// MARK: - Tooltips
+"help_reload" = "重新扫描壁纸文件夹并刷新缩略图";
+"help_settings" = "打开设置";
+"help_wallpaper_folder" = "扫描 .mp4/.mov 文件的文件夹。可输入路径或用按钮选择；网格会显示此处找到的所有视频。";
+"help_scaling_mode" = "视频适配屏幕的方式：填充会裁剪画面，适应会留黑边，拉伸会变形，居中保持原始尺寸，高度填充按屏幕高度缩放。";
+"help_app_language" = "界面语言。重启应用后生效。";
+"help_random_on_startup" = "每次启动应用时随机应用文件夹中的一个壁纸。";
+"help_random_on_lid" = "Mac 从睡眠唤醒时随机应用一个壁纸。需重启应用生效。";
+"help_pause_when_active" = "当其他应用位于前台时暂停播放以省电，回到桌面时恢复播放。";
+"help_vignette_bar" = "在菜单栏后绘制暗色渐变以保持可读性。更改后请重新应用壁纸。";
+"help_rotation" = "按下方间隔自动轮换文件夹中的壁纸。";
+"help_rotation_delay" = "自动更换壁纸的时间间隔。";
+"help_rotation_type" = "顺序按文件夹顺序播放；随机每次挑选不同壁纸。";
+"help_volume" = "壁纸视频的音量。设为零即静音。";
+"help_optimize" = "将视频重新编码为更高效的编解码格式。当前不可用。";
+"help_clear_cache" = "删除已生成的缩略图和静态帧，需要时会自动重建。";
+"help_reset_user_data" = "清除所有设置和已保存的显示器分配，恢复到首次启动状态。";
 
 // MARK: - 质量标签
 "quality_4k" = "4K";

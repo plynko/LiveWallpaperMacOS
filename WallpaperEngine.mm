@@ -1305,6 +1305,12 @@ static NSString *folderPath = nil;
   NSMutableArray *result = [NSMutableArray array];
 
   for (const Display &d : displays) {
+    // Entries of disconnected displays stay in the list so their wallpaper
+    // can be restored on reconnect, but the UI must only offer displays
+    // that are actually here.
+    if (d.screen == kCGNullDirectDisplay)
+      continue;
+
     DisplayObjc *obj =
         [[DisplayObjc alloc] initWithDaemon:d.daemon
                                      screen:d.screen
